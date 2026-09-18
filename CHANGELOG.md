@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-09-18
+
+### Added
+
+- FastHTML web interface in `web/` that stores usage in PostgreSQL and lists years, months, days, and hours that already have data.
+- Separate `eloverblick` tables for hours, days, months, and years, each with `scraped_at`.
+- On a day, Get data pulls the day total and that day's hours. If the day is already stored, the UI asks whether to pull again.
+- Docker Compose deploy (existing Postgres, Unraid-friendly) documented in `web.md`.
+
 ## [0.0.3] - 2026-09-18
 
 ### Added

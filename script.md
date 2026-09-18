@@ -119,6 +119,8 @@ Parsed meter data. `TimeSeries.points` is a flat list. `TimeSeries.total()` sums
 
 Enum: `Actual`, `Quarter`, `Hour`, `Day`, `Month`, `Year`.
 
+The FastHTML app in `web/` uses `CustomerApi` to pull a day total plus hours (and optionally a month or year) into PostgreSQL. See [web.md](web.md).
+
 ## Adding code later
 
 1. Put new modules in `script/`.

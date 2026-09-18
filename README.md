@@ -24,15 +24,16 @@ export ELOVERBLIK_TOKEN="your-refresh-token"
 
 Do not commit the token. Keep it in the environment (or a local `.env` that is gitignored). The scripts read `os.environ["ELOVERBLIK_TOKEN"]` and will fail if it is missing.
 
-Python code lives in `script/`. Class and method documentation is in [script.md](script.md). Copy-paste examples are in [example.md](example.md). Single-value OOP calls are in [example_highlevel.md](example_highlevel.md).
+Python code lives in `script/`. Class and method documentation is in [script.md](script.md). Copy-paste examples are in [example.md](example.md). Single-value OOP calls are in [example_highlevel.md](example_highlevel.md). The FastHTML web interface (Postgres storage, Docker Compose for Unraid) is documented in [web.md](web.md).
 
 ```bash
 python3 -m script
+python3 -m web
 ```
 
 ## Status
 
-Version `0.0.3`. See [CHANGELOG.md](CHANGELOG.md).
+Version `0.0.4`. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
