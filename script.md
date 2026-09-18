@@ -89,6 +89,9 @@ Main entry point. One instance per session.
 | `monthly(date_from, date_to)` | aggregation `Month` |
 | `months_for_year(year)` | monthly readings for one calendar year |
 | `yearly(date_from, date_to)` | aggregation `Year` |
+| `usage_for_date(day)` | total kWh for one calendar day |
+| `usage_for_month(year, month)` | total kWh for one calendar month |
+| `usage_for_year(year)` | total kWh for one calendar year |
 
 The refresh token is exchanged once for a data-access token (valid about 24 hours). Later calls reuse that access token on the same `CustomerApi` instance.
 

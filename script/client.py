@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from script.exceptions import AddressSelectionError, ApiError
 from script.models import (
@@ -22,6 +23,7 @@ from script.models import (
 from script.settings import Settings
 
 MAX_METERING_POINTS_PER_REQUEST = 10
+DEFAULT_TIMEZONE = ZoneInfo("Europe/Copenhagen")
 
 
 class CustomerApi:
@@ -32,15 +34,16 @@ class CustomerApi:
     reused on this instance.
     """
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, timezone: ZoneInfo | None = None):
         self.settings = settings
+        self.timezone = timezone or DEFAULT_TIMEZONE
         self._access_token: str | None = None
         self._selected_address: MeteringPoint | None = None
 
     @classmethod
-    def from_env(cls) -> CustomerApi:
+    def from_env(cls, timezone: ZoneInfo | None = None) -> CustomerApi:
         """Build a client from ELOVERBLIK_TOKEN."""
-        return cls(Settings.from_env())
+        return cls(Settings.from_env(), timezone=timezone)
 
     def is_alive(self) -> bool:
         """Return True when the API reports that it is operating normally."""
@@ -175,6 +178,36 @@ class CustomerApi:
             self.monthly(date_from, date_to, metering_point_ids),
             str(year),
         )
+
+    def usage_for_date(
+        self,
+        day: date | datetime | str,
+        metering_point_ids: list[str] | str | None = None,
+    ) -> float:
+        """Return total kWh for one calendar day on the selected address."""
+        date_from, date_to = day_bounds(day)
+        series = self._one_series(
+            self.daily(date_from, date_to, metering_point_ids),
+            as_date_str(day),
+        )
+        return series.total()
+
+    def usage_for_month(
+        self,
+        year: int,
+        month: int,
+        metering_point_ids: list[str] | str | None = None,
+    ) -> float:
+        """Return total kWh for one calendar month on the selected address."""
+        return self.days_for_month(year, month, metering_point_ids).total()
+
+    def usage_for_year(
+        self,
+        year: int,
+        metering_point_ids: list[str] | str | None = None,
+    ) -> float:
+        """Return total kWh for one calendar year on the selected address."""
+        return self.months_for_year(year, metering_point_ids).total()
 
     def daily(
         self,
