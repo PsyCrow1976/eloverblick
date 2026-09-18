@@ -75,6 +75,41 @@ CREATE TABLE IF NOT EXISTS eloverblick.years (
     scraped_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (metering_point_id, year)
 );
+
+CREATE TABLE IF NOT EXISTS eloverblick.hour_prices (
+    price_area text NOT NULL,
+    period_start timestamptz NOT NULL,
+    local_date date NOT NULL,
+    local_hour smallint NOT NULL,
+    price_dkk_mwh numeric(14, 6),
+    price_eur_mwh numeric(14, 6),
+    scraped_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (price_area, period_start)
+);
+
+CREATE INDEX IF NOT EXISTS hour_prices_local_date_idx
+    ON eloverblick.hour_prices (price_area, local_date);
+
+CREATE TABLE IF NOT EXISTS eloverblick.job_logs (
+    id bigserial PRIMARY KEY,
+    logged_at timestamptz NOT NULL DEFAULT now(),
+    instance text NOT NULL,
+    job_name text NOT NULL,
+    success boolean NOT NULL,
+    output text NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS job_logs_logged_at_idx
+    ON eloverblick.job_logs (logged_at DESC);
+
+CREATE TABLE IF NOT EXISTS eloverblick.job_state (
+    job_name text PRIMARY KEY,
+    enabled boolean NOT NULL DEFAULT true,
+    interval_hours integer NOT NULL DEFAULT 6,
+    last_run_at timestamptz,
+    last_success boolean,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
 """
 
 
@@ -127,6 +162,37 @@ class MeterRow:
     name: str | None
     address: str | None
     status: str | None
+
+
+@dataclass
+class HourPriceRow:
+    price_area: str
+    period_start: datetime
+    local_date: date
+    local_hour: int
+    price_dkk_mwh: Decimal | None
+    price_eur_mwh: Decimal | None
+    scraped_at: datetime
+
+
+@dataclass
+class JobLogRow:
+    id: int
+    logged_at: datetime
+    instance: str
+    job_name: str
+    success: bool
+    output: str
+
+
+@dataclass
+class JobStateRow:
+    job_name: str
+    enabled: bool
+    interval_hours: int
+    last_run_at: datetime | None
+    last_success: bool | None
+    updated_at: datetime
 
 
 def _env(name: str, default: str | None = None) -> str:
@@ -524,6 +590,176 @@ def replace_year(
         conn.commit()
 
 
+def replace_hour_prices(rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    with connect() as conn:
+        for item in rows:
+            conn.execute(
+                """
+                INSERT INTO eloverblick.hour_prices (
+                    price_area, period_start, local_date, local_hour,
+                    price_dkk_mwh, price_eur_mwh, scraped_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, now())
+                ON CONFLICT (price_area, period_start) DO UPDATE SET
+                    local_date = EXCLUDED.local_date,
+                    local_hour = EXCLUDED.local_hour,
+                    price_dkk_mwh = EXCLUDED.price_dkk_mwh,
+                    price_eur_mwh = EXCLUDED.price_eur_mwh,
+                    scraped_at = now()
+                """,
+                (
+                    item["price_area"],
+                    item["period_start"],
+                    item["local_date"],
+                    item["local_hour"],
+                    item.get("price_dkk_mwh"),
+                    item.get("price_eur_mwh"),
+                ),
+            )
+        conn.commit()
+    return len(rows)
+
+
+def list_hour_prices(price_area: str, day: date) -> list[HourPriceRow]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT price_area, period_start, local_date, local_hour,
+                   price_dkk_mwh, price_eur_mwh, scraped_at
+            FROM eloverblick.hour_prices
+            WHERE price_area = %s AND local_date = %s
+            ORDER BY period_start
+            """,
+            (price_area, day),
+        ).fetchall()
+    return [_hour_price_row(row) for row in rows]
+
+
+def hour_price_days(price_area: str, days: list[date]) -> dict[date, int]:
+    if not days:
+        return {}
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT local_date, COUNT(*) AS hour_count
+            FROM eloverblick.hour_prices
+            WHERE price_area = %s AND local_date = ANY(%s)
+            GROUP BY local_date
+            """,
+            (price_area, days),
+        ).fetchall()
+    return {row["local_date"]: int(row["hour_count"]) for row in rows}
+
+
+def ensure_job_state(job_name: str, interval_hours: int) -> JobStateRow:
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO eloverblick.job_state (
+                job_name, enabled, interval_hours, updated_at
+            )
+            VALUES (%s, true, %s, now())
+            ON CONFLICT (job_name) DO UPDATE SET
+                interval_hours = EXCLUDED.interval_hours,
+                updated_at = now()
+            """,
+            (job_name, interval_hours),
+        )
+        conn.commit()
+    state = get_job_state(job_name)
+    if state is None:
+        raise RuntimeError(f"Failed to create job_state for {job_name}.")
+    return state
+
+
+def get_job_state(job_name: str) -> JobStateRow | None:
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT job_name, enabled, interval_hours, last_run_at,
+                   last_success, updated_at
+            FROM eloverblick.job_state
+            WHERE job_name = %s
+            """,
+            (job_name,),
+        ).fetchone()
+    return _job_state_row(row) if row else None
+
+
+def set_job_enabled(job_name: str, enabled: bool) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE eloverblick.job_state
+            SET enabled = %s, updated_at = now()
+            WHERE job_name = %s
+            """,
+            (enabled, job_name),
+        )
+        conn.commit()
+
+
+def touch_job_run(job_name: str, success: bool) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE eloverblick.job_state
+            SET last_run_at = now(), last_success = %s, updated_at = now()
+            WHERE job_name = %s
+            """,
+            (success, job_name),
+        )
+        conn.commit()
+
+
+def insert_job_log(
+    *,
+    instance: str,
+    job_name: str,
+    success: bool,
+    output: str,
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO eloverblick.job_logs (
+                logged_at, instance, job_name, success, output
+            )
+            VALUES (now(), %s, %s, %s, %s)
+            """,
+            (instance, job_name, success, output),
+        )
+        conn.commit()
+
+
+def list_job_logs(job_name: str | None = None, limit: int = 100) -> list[JobLogRow]:
+    with connect() as conn:
+        if job_name:
+            rows = conn.execute(
+                """
+                SELECT id, logged_at, instance, job_name, success, output
+                FROM eloverblick.job_logs
+                WHERE job_name = %s
+                ORDER BY logged_at DESC, id DESC
+                LIMIT %s
+                """,
+                (job_name, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, logged_at, instance, job_name, success, output
+                FROM eloverblick.job_logs
+                ORDER BY logged_at DESC, id DESC
+                LIMIT %s
+                """,
+                (limit,),
+            ).fetchall()
+    return [_job_log_row(row) for row in rows]
+
+
 def _rollup_from_days(conn, metering_point_id: str, day: date) -> None:
     conn.execute(
         """
@@ -621,4 +857,38 @@ def _year_row(row: dict[str, Any]) -> YearRow:
         unit=row["unit"],
         scraped_at=row["scraped_at"],
         month_count=int(row.get("month_count") or 0),
+    )
+
+
+def _hour_price_row(row: dict[str, Any]) -> HourPriceRow:
+    return HourPriceRow(
+        price_area=row["price_area"],
+        period_start=row["period_start"],
+        local_date=row["local_date"],
+        local_hour=int(row["local_hour"]),
+        price_dkk_mwh=row["price_dkk_mwh"],
+        price_eur_mwh=row["price_eur_mwh"],
+        scraped_at=row["scraped_at"],
+    )
+
+
+def _job_log_row(row: dict[str, Any]) -> JobLogRow:
+    return JobLogRow(
+        id=int(row["id"]),
+        logged_at=row["logged_at"],
+        instance=row["instance"],
+        job_name=row["job_name"],
+        success=bool(row["success"]),
+        output=row["output"],
+    )
+
+
+def _job_state_row(row: dict[str, Any]) -> JobStateRow:
+    return JobStateRow(
+        job_name=row["job_name"],
+        enabled=bool(row["enabled"]),
+        interval_hours=int(row["interval_hours"]),
+        last_run_at=row["last_run_at"],
+        last_success=row["last_success"],
+        updated_at=row["updated_at"],
     )

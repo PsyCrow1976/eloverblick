@@ -11,6 +11,8 @@ Run from the repository root. Python code for the Customer API stays in `script/
 | `web/app.py` | FastHTML routes and pages |
 | `web/db.py` | PostgreSQL schema and queries |
 | `web/ingest.py` | Pulls Customer API usage into the tables |
+| `web/prices.py` | Day-ahead hourly prices from Energi Data Service |
+| `web/jobs.py` | In-process 6-hour price job, file + database logging |
 | `web/__main__.py` | `python -m web` |
 | `Dockerfile` / `docker-compose.yml` | Unraid / Docker deploy |
 | `.env.example` | Environment template |
@@ -31,6 +33,36 @@ On startup the app creates schema `eloverblick` and these tables:
 - `eloverblick.days` — calendar day total, with `scraped_at`
 - `eloverblick.months` — calendar month total, with `scraped_at`
 - `eloverblick.years` — calendar year total, with `scraped_at`
+- `eloverblick.hour_prices` — hourly day-ahead spot prices (DKK/MWh and EUR/MWh), with `scraped_at`
+- `eloverblick.job_logs` — each job run: timestamp, instance name, success/fail, output
+- `eloverblick.job_state` — whether the price job is enabled, interval, last run
+
+Optional:
+
+- `PRICE_AREA` — bidding zone, default `DK2` (east Denmark / Copenhagen). Use `DK1` for west Denmark.
+- `JOB_INTERVAL_HOURS` — default `6`
+- `JOB_LOG_PATH` — default `/var/log/eloverblik/prices.log` in Docker; locally falls back to `logs/prices.log` if that path is not writable
+- `JOB_INSTANCE` — name written on each log row; defaults to the container hostname
+
+## Price job
+
+On container start the app starts a background job (not system cron). Every 6 hours it pulls day-ahead prices for **today and tomorrow** from [Energi Data Service DayAheadPrices](https://www.energidataservice.dk/tso-electricity/DayAheadPrices), averages 15-minute values to hours, and upserts `eloverblick.hour_prices`.
+
+Each run writes:
+
+1. A line in the log file (`OK` or `FAIL`, instance, output)
+2. A row in `eloverblick.job_logs`
+
+Tomorrow’s prices are usually published around 13:00 Copenhagen time. A run before that still stores today and logs that tomorrow is not published yet.
+
+Open **Jobs** in the web UI (`/jobs`) to:
+
+- See whether the job is running
+- Start or stop it (stop is remembered across container restarts)
+- Run a pull immediately
+- Read the PostgreSQL log
+
+Day pages also show the hourly spot price next to usage when prices exist for that date.
 
 ## Get data
 
@@ -57,4 +89,4 @@ Unraid steps (Compose Manager, appdata path, `.env`, Postgres host) are in [depl
 docker compose up -d --build
 ```
 
-The container listens on port `8080` in Docker Compose. Set `POSTGRES_HOST` to an address the container can reach (on Unraid that is often the LAN IP of the Postgres container, e.g. `192.168.1.80`).
+The container listens on `WEB_PORT` from `.env` (default `8080`). Set `POSTGRES_HOST` to an address the container can reach (on Unraid that is often the LAN IP of the Postgres container, e.g. `192.168.1.80`).

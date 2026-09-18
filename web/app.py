@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import calendar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote
@@ -26,7 +26,9 @@ from fasthtml.common import (
     Main,
     Nav,
     P,
+    Pre,
     Span,
+    Strong,
     Style,
     Table,
     Tbody,
@@ -42,6 +44,8 @@ from starlette.responses import RedirectResponse, PlainTextResponse
 from script.exceptions import ElOverblikError
 from web import db
 from web.ingest import meter_id, pull_day, pull_month, pull_year
+from web.jobs import JOB_NAME, instance_name, interval_hours, log_path, scheduler
+from web.prices import price_area
 
 TIMEZONE = ZoneInfo("Europe/Copenhagen")
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -79,11 +83,18 @@ article.warn { background: #fff7e8; border-color: #e6c989; }
 article.err { background: #fdecec; border-color: #e2a2a2; }
 .jump { display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap; }
 .jump input { margin-bottom: 0; }
+nav.top-nav a { color: #0f766e; font-weight: 650; }
+.badge { font-size: 0.85rem; font-weight: 650; }
+.ok { color: #0f766e; }
+.fail { color: #b42318; }
+pre.output { white-space: pre-wrap; font-size: 0.85rem; margin: 0;
+  font-family: ui-monospace, monospace; }
 """
 
 
 def on_startup() -> None:
     db.ensure_schema()
+    scheduler.restore()
 
 
 app, rt = fast_app(
@@ -97,6 +108,125 @@ app, rt = fast_app(
 @rt("/health")
 def health() -> PlainTextResponse:
     return PlainTextResponse("ok")
+
+
+@rt("/jobs")
+def jobs_view(msg: str | None = None, err: str | None = None):
+    state = db.get_job_state(JOB_NAME)
+    logs = db.list_job_logs(JOB_NAME, limit=100)
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+    area = price_area()
+    counts = db.hour_price_days(area, [today, tomorrow])
+    running = scheduler.running
+    enabled = state.enabled if state else False
+    status = "running" if running else "stopped"
+    last = "never"
+    last_cls = "muted"
+    if state and state.last_run_at:
+        last = fmt_when(state.last_run_at)
+        last_cls = "ok" if state.last_success else "fail"
+    log_rows = []
+    for item in logs:
+        log_rows.append(
+            Tr(
+                Td(fmt_when(item.logged_at)),
+                Td(item.instance),
+                Td("OK" if item.success else "FAIL", cls="ok" if item.success else "fail"),
+                Td(Pre(item.output, cls="output")),
+            )
+        )
+    log_table = (
+        Table(
+            Thead(Tr(Th("Time"), Th("Instance"), Th("Result"), Th("Output"))),
+            Tbody(*log_rows),
+        )
+        if log_rows
+        else P("No job log entries yet.")
+    )
+    controls = []
+    if running:
+        controls.append(
+            Form(
+                Button("Stop job", cls="secondary"),
+                method="post",
+                action="/jobs/stop",
+                enctype="application/x-www-form-urlencoded",
+            )
+        )
+    else:
+        controls.append(
+            Form(
+                Button("Start job"),
+                method="post",
+                action="/jobs/start",
+                enctype="application/x-www-form-urlencoded",
+            )
+        )
+    controls.append(
+        Form(
+            Button("Run now", cls="secondary"),
+            method="post",
+            action="/jobs/run",
+            enctype="application/x-www-form-urlencoded",
+        )
+    )
+    return _page(
+        _crumbs([("Jobs", None)]),
+        _flash(msg, err),
+        Article(
+            H2("Price job"),
+            P(
+                Strong(status.capitalize(), cls="badge " + ("ok" if running else "fail")),
+                Span(
+                    f" · enabled in database: {'yes' if enabled else 'no'}"
+                    f" · every {interval_hours()} hours"
+                    f" · instance {instance_name()}"
+                    f" · area {area}",
+                    cls="muted",
+                ),
+            ),
+            P(f"Last run: {last}", cls=last_cls),
+            P(
+                f"Stored hourly prices: today {counts.get(today, 0)} hours, "
+                f"tomorrow {counts.get(tomorrow, 0)} hours."
+            ),
+            P(f"Log file: {log_path()}", cls="muted"),
+            Div(*controls, cls="actions"),
+            **({"cls": "warn"} if not running else {}),
+        ),
+        H2("Log"),
+        P("Newest first. Each run is written to the log file and to PostgreSQL."),
+        log_table,
+        title="Jobs",
+    )
+
+
+@rt("/jobs/start", methods=["POST"])
+def jobs_start():
+    try:
+        message = scheduler.start(run_now=True)
+    except Exception as exc:
+        return _redirect("/jobs", err=str(exc))
+    return _redirect("/jobs", msg=message)
+
+
+@rt("/jobs/stop", methods=["POST"])
+def jobs_stop():
+    try:
+        message = scheduler.stop()
+    except Exception as exc:
+        return _redirect("/jobs", err=str(exc))
+    return _redirect("/jobs", msg=message)
+
+
+@rt("/jobs/run", methods=["POST"])
+def jobs_run():
+    try:
+        message = scheduler.run_once(trigger="manual")
+    except Exception as exc:
+        return _redirect("/jobs", err=str(exc))
+    return _redirect("/jobs", msg=message)
 
 
 @rt("/")
@@ -302,6 +432,10 @@ def day_view(year: int, month: int, day: int, msg: str | None = None, err: str |
         return meter
     row = db.get_day(meter, chosen)
     hours = db.list_hours(meter, chosen) if row else []
+    prices = db.list_hour_prices(price_area(), chosen)
+    usage_by_hour = {item.local_hour: item for item in hours}
+    price_by_hour = {item.local_hour: item for item in prices}
+    hour_keys = sorted(set(usage_by_hour) | set(price_by_hour))
     summary = []
     if row:
         summary.append(
@@ -312,18 +446,38 @@ def day_view(year: int, month: int, day: int, msg: str | None = None, err: str |
         )
     else:
         summary.append(P("No usage stored for this date yet."))
+    if prices:
+        summary.append(
+            P(
+                f"Spot prices {price_area()}: {len(prices)} hours · "
+                f"scraped {fmt_when(prices[0].scraped_at)}"
+            )
+        )
     table = None
-    if hours:
+    if hour_keys:
         table = Table(
-            Thead(Tr(Th("Hour"), Th("Usage"), Th("Quality"))),
+            Thead(Tr(Th("Hour"), Th("Usage"), Th("Price"), Th("Quality"))),
             Tbody(
                 *[
                     Tr(
-                        Td(f"{item.local_hour:02d}:00"),
-                        Td(fmt_kwh(item.usage_kwh)),
-                        Td(item.quality or "—"),
+                        Td(f"{hour:02d}:00"),
+                        Td(
+                            fmt_kwh(usage_by_hour[hour].usage_kwh)
+                            if hour in usage_by_hour
+                            else "—"
+                        ),
+                        Td(
+                            fmt_price(price_by_hour[hour].price_dkk_mwh)
+                            if hour in price_by_hour
+                            else "—"
+                        ),
+                        Td(
+                            usage_by_hour[hour].quality
+                            if hour in usage_by_hour and usage_by_hour[hour].quality
+                            else "—"
+                        ),
                     )
-                    for item in hours
+                    for hour in hour_keys
                 ]
             ),
         )
@@ -452,6 +606,7 @@ def _page(*content, title: str):
         Main(
             Header(
                 Div(H1(A("ElOverblik", href="/")), P(address, cls="muted")),
+                Nav(A("Jobs", href="/jobs"), cls="top-nav"),
                 cls="top",
             ),
             *nodes,
@@ -507,6 +662,14 @@ def _valid_month(year: int, month: int) -> None:
     if not 1 <= month <= 12:
         raise ValueError("month")
     date(year, month, 1)
+
+
+def fmt_price(value: Decimal | float | None) -> str:
+    if value is None:
+        return "—"
+    kwh = Decimal(value) / Decimal("1000")
+    text = f"{kwh:.4f}".rstrip("0").rstrip(".")
+    return f"{text} DKK/kWh"
 
 
 def fmt_kwh(value: Decimal | float | None) -> str:

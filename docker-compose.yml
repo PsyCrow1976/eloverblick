@@ -4,24 +4,27 @@ services:
     container_name: eloverblick
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${WEB_PORT:-8080}:${WEB_PORT:-8080}"
     env_file:
       - .env
     environment:
       WEB_HOST: "0.0.0.0"
-      WEB_PORT: "8080"
+      WEB_PORT: "${WEB_PORT:-8080}"
+      JOB_LOG_PATH: "/var/log/eloverblick/prices.log"
+    volumes:
+      - ./logs:/var/log/eloverblick
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')",
+          "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('WEB_PORT', '8080'))",
         ]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 20s
     labels:
-      net.unraid.docker.webui: "http://[IP]:[PORT:8080]"
+      net.unraid.docker.webui: "http://[IP]:[PORT:${WEB_PORT:-8080}]"
       net.unraid.docker.description: "ElOverblik usage viewer"
