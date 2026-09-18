@@ -32,7 +32,7 @@ python3 -m script
 
 ## Status
 
-Version `0.0.2`. See [CHANGELOG.md](CHANGELOG.md).
+Version `0.0.3`. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
