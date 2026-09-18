@@ -33,7 +33,7 @@ python3 -m web
 
 ## Status
 
-Version `0.0.4`. See [CHANGELOG.md](CHANGELOG.md).
+Version `0.0.5`. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

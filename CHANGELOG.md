@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2026-09-18
+
+### Added
+
+- Background job every 6 hours that stores day-ahead hourly prices for today and tomorrow, and backfills ElOverblik usage for recent days that are still missing (DataHub is typically 2–3 days behind).
+- Job log file plus `eloverblick.job_logs` / `job_state` / `hour_prices` tables. The Jobs page can start, stop, and run the job and shows the log.
+- `WEB_PORT` from `.env` is used for the published Docker port and the app listen port.
+
 ## [0.0.4] - 2026-09-18
 
 ### Added
