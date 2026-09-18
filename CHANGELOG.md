@@ -10,3 +10,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Initial version of the project.
+- OOP Python package in `script/` for the Customer API (token, metering points, yearly/monthly/daily/hourly time series).
+- `script.md` documentation for the Python code.

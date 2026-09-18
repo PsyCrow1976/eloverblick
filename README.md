@@ -15,7 +15,19 @@ Official API docs: [Customer API](https://docs.eloverblik.dk/en/docs/api/custome
 ## Requirements
 
 - Python 3
-- A personal refresh token from ElOverblik (Data → Access to data / API)
+- `ELOVERBLIK_TOKEN` must be set in the environment before any Python code will run. This is the personal refresh token from ElOverblik (Data → Access to data / API).
+
+```bash
+export ELOVERBLIK_TOKEN="your-refresh-token"
+```
+
+Do not commit the token. Keep it in the environment (or a local `.env` that is gitignored). The scripts read `os.environ["ELOVERBLIK_TOKEN"]` and will fail if it is missing.
+
+Python code lives in `script/`. Class and method documentation is in [script.md](script.md).
+
+```bash
+python3 -m script
+```
 
 ## Status
 
