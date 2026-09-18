@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.2] - 2026-09-18
+
+### Added
+
+- `example.md` with the Python commands to run the high-level client:
+  1. set `ELOVERBLIK_TOKEN`
+  2. initialize `CustomerApi`
+  3. list and select the address to use
+  4. total usage for a specific date
+  5. 24 hours of usage for a specific date (`hours_for_day`)
+  6. daily usage for a given month (`days_for_month`)
+  7. monthly usage for a whole year (`months_for_year`)
+
 ## [0.0.1] - 2026-09-18
 
 ### Added
@@ -14,7 +27,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `script.md` documentation for the Python code.
 - `addresses()` lists every installation on the API key with consumer name and `active` / `moved_out` status.
 - `select_address()` stores the active address (or an explicit alternative) for later usage calls.
-- `example.md` with the commands to set `ELOVERBLIK_TOKEN`, initialize the client, select an address, and get one date's total usage.
-- `hours_for_day(day)` returns the 24 hourly readings for one calendar day on the selected address.
-- `days_for_month(year, month)` returns daily usage for one calendar month.
-- `months_for_year(year)` returns monthly usage for one calendar year.
