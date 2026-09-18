@@ -51,6 +51,8 @@ Open http://127.0.0.1:5001
 
 ## Docker / Unraid
 
+Unraid steps (Compose Manager, appdata path, `.env`, Postgres host) are in [deploy.md](deploy.md).
+
 ```bash
 docker compose up -d --build
 ```
