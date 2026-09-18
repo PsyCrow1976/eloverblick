@@ -68,3 +68,34 @@ Nordfeldvej 21 2700 Brønshøj
 ```
 
 Change `day = date(2026, 9, 16)` to any other calendar date that DataHub has settled.
+
+## 5. Example: 24 hours of usage for a specific date
+
+`hours_for_day` takes one calendar day and returns that day's hourly readings on the selected address.
+
+```python
+from datetime import date
+from zoneinfo import ZoneInfo
+
+day = date(2026, 9, 16)
+hours = api.hours_for_day(day)
+copenhagen = ZoneInfo("Europe/Copenhagen")
+
+print(api.selected_address.address)
+print(day.isoformat(), hours.total(), hours.unit)
+for point in hours.points:
+    local = point.start.astimezone(copenhagen) if point.start else None
+    clock = local.strftime("%H:%M") if local else "?"
+    print(clock, point.quantity, point.unit)
+```
+
+Example output:
+
+```text
+Nordfeldvej 21 2700 Brønshøj
+2026-09-16 4.53 KWH
+00:00 0.18 KWH
+01:00 0.07 KWH
+...
+23:00 0.12 KWH
+```

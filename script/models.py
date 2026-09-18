@@ -236,3 +236,9 @@ def as_date_str(value: date | datetime | str) -> str:
     if isinstance(value, date):
         return value.isoformat()
     return str(value)
+
+
+def day_bounds(value: date | datetime | str) -> tuple[date, date]:
+    """Return inclusive start and exclusive end for one calendar day."""
+    start = date.fromisoformat(as_date_str(value))
+    return start, start + timedelta(days=1)

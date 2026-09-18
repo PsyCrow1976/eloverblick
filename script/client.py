@@ -10,7 +10,13 @@ from datetime import date, datetime
 from typing import Any
 
 from script.exceptions import AddressSelectionError, ApiError
-from script.models import Aggregation, MeteringPoint, TimeSeries, as_date_str
+from script.models import (
+    Aggregation,
+    MeteringPoint,
+    TimeSeries,
+    as_date_str,
+    day_bounds,
+)
 from script.settings import Settings
 
 MAX_METERING_POINTS_PER_REQUEST = 10
@@ -127,6 +133,21 @@ class CustomerApi:
         metering_point_ids: list[str] | str | None = None,
     ) -> list[TimeSeries]:
         return self.time_series(date_from, date_to, Aggregation.HOUR, metering_point_ids)
+
+    def hours_for_day(
+        self,
+        day: date | datetime | str,
+        metering_point_ids: list[str] | str | None = None,
+    ) -> TimeSeries:
+        """Return the 24 hourly readings for one calendar day.
+
+        Uses the selected address unless metering_point_ids is passed.
+        """
+        date_from, date_to = day_bounds(day)
+        series = self.hourly(date_from, date_to, metering_point_ids)
+        if not series:
+            raise ApiError(f"No hourly series returned for {as_date_str(day)}.")
+        return series[0]
 
     def daily(
         self,

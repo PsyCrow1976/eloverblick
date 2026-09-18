@@ -80,6 +80,7 @@ Main entry point. One instance per session.
 | `selected_address` | The address used by later usage calls |
 | `time_series(date_from, date_to, aggregation)` | `POST /meterdata/gettimeseries/{from}/{to}/{aggregation}` |
 | `hourly(date_from, date_to)` | aggregation `Hour` |
+| `hours_for_day(day)` | 24 hourly readings for one calendar day |
 | `daily(date_from, date_to)` | aggregation `Day` |
 | `monthly(date_from, date_to)` | aggregation `Month` |
 | `yearly(date_from, date_to)` | aggregation `Year` |

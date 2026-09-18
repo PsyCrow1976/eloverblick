@@ -15,3 +15,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `addresses()` lists every installation on the API key with consumer name and `active` / `moved_out` status.
 - `select_address()` stores the active address (or an explicit alternative) for later usage calls.
 - `example.md` with the commands to set `ELOVERBLIK_TOKEN`, initialize the client, select an address, and get one date's total usage.
+- `hours_for_day(day)` returns the 24 hourly readings for one calendar day on the selected address.
