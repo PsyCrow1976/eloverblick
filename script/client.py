@@ -16,6 +16,8 @@ from script.models import (
     TimeSeries,
     as_date_str,
     day_bounds,
+    month_bounds,
+    year_bounds,
 )
 from script.settings import Settings
 
@@ -144,10 +146,35 @@ class CustomerApi:
         Uses the selected address unless metering_point_ids is passed.
         """
         date_from, date_to = day_bounds(day)
-        series = self.hourly(date_from, date_to, metering_point_ids)
-        if not series:
-            raise ApiError(f"No hourly series returned for {as_date_str(day)}.")
-        return series[0]
+        return self._one_series(
+            self.hourly(date_from, date_to, metering_point_ids),
+            as_date_str(day),
+        )
+
+    def days_for_month(
+        self,
+        year: int,
+        month: int,
+        metering_point_ids: list[str] | str | None = None,
+    ) -> TimeSeries:
+        """Return daily usage for one calendar month on the selected address."""
+        date_from, date_to = _require_range(*month_bounds(year, month), f"{year}-{month:02d}")
+        return self._one_series(
+            self.daily(date_from, date_to, metering_point_ids),
+            f"{year}-{month:02d}",
+        )
+
+    def months_for_year(
+        self,
+        year: int,
+        metering_point_ids: list[str] | str | None = None,
+    ) -> TimeSeries:
+        """Return monthly usage for one calendar year on the selected address."""
+        date_from, date_to = _require_range(*year_bounds(year), str(year))
+        return self._one_series(
+            self.monthly(date_from, date_to, metering_point_ids),
+            str(year),
+        )
 
     def daily(
         self,
@@ -180,6 +207,11 @@ class CustomerApi:
                 "or pass metering_point_ids."
             )
         return self._selected_address.metering_point_id
+
+    def _one_series(self, series: list[TimeSeries], label: str) -> TimeSeries:
+        if not series:
+            raise ApiError(f"No time series returned for {label}.")
+        return series[0]
 
     def _fetch_access_token(self) -> str:
         payload = self._request(
@@ -242,6 +274,12 @@ class CustomerApi:
             ) from exc
         except urllib.error.URLError as exc:
             raise ApiError(f"{method} {path} failed: {exc.reason}") from exc
+
+
+def _require_range(date_from: date, date_to: date, label: str) -> tuple[date, date]:
+    if date_from >= date_to:
+        raise ApiError(f"No settled data for {label} yet.")
+    return date_from, date_to
 
 
 def _result_list(payload: Any) -> list[Any]:

@@ -50,6 +50,9 @@ yearly = api.yearly(date(today.year, 1, 1), today)
 
 series = api.time_series(yesterday, today, Aggregation.HOUR)
 print(selected.address, series[0].total(), series[0].unit)
+
+print(api.days_for_month(2026, 9).total())
+print(api.months_for_year(2025).total())
 ```
 
 Smoke check:
@@ -82,7 +85,9 @@ Main entry point. One instance per session.
 | `hourly(date_from, date_to)` | aggregation `Hour` |
 | `hours_for_day(day)` | 24 hourly readings for one calendar day |
 | `daily(date_from, date_to)` | aggregation `Day` |
+| `days_for_month(year, month)` | daily readings for one calendar month |
 | `monthly(date_from, date_to)` | aggregation `Month` |
+| `months_for_year(year)` | monthly readings for one calendar year |
 | `yearly(date_from, date_to)` | aggregation `Year` |
 
 The refresh token is exchanged once for a data-access token (valid about 24 hours). Later calls reuse that access token on the same `CustomerApi` instance.

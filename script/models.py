@@ -242,3 +242,28 @@ def day_bounds(value: date | datetime | str) -> tuple[date, date]:
     """Return inclusive start and exclusive end for one calendar day."""
     start = date.fromisoformat(as_date_str(value))
     return start, start + timedelta(days=1)
+
+
+def month_bounds(year: int, month: int) -> tuple[date, date]:
+    """Return inclusive start and exclusive end for one calendar month."""
+    if not 1 <= month <= 12:
+        raise ValueError("month must be in 1..12")
+    start = date(year, month, 1)
+    if month == 12:
+        end = date(year + 1, 1, 1)
+    else:
+        end = date(year, month + 1, 1)
+    return start, exclusive_end(end)
+
+
+def year_bounds(year: int) -> tuple[date, date]:
+    """Return inclusive start and exclusive end for one calendar year."""
+    start = date(year, 1, 1)
+    end = date(year + 1, 1, 1)
+    return start, exclusive_end(end)
+
+
+def exclusive_end(end: date) -> date:
+    """Cap an exclusive end date at tomorrow (API limit)."""
+    tomorrow = date.today() + timedelta(days=1)
+    return min(end, tomorrow)
