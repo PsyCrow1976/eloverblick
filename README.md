@@ -24,7 +24,7 @@ export ELOVERBLIK_TOKEN="your-refresh-token"
 
 Do not commit the token. Keep it in the environment (or a local `.env` that is gitignored). The scripts read `os.environ["ELOVERBLIK_TOKEN"]` and will fail if it is missing.
 
-Python code lives in `script/`. Class and method documentation is in [script.md](script.md).
+Python code lives in `script/`. Class and method documentation is in [script.md](script.md). Copy-paste examples are in [example.md](example.md).
 
 ```bash
 python3 -m script
