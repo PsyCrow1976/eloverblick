@@ -47,7 +47,7 @@ cp .env.example .env
 python -m web
 ```
 
-Open http://127.0.0.1:5001
+Open http://127.0.0.1:8080
 
 ## Docker / Unraid
 
@@ -57,4 +57,4 @@ Unraid steps (Compose Manager, appdata path, `.env`, Postgres host) are in [depl
 docker compose up -d --build
 ```
 
-The container listens on port `5001`. Set `POSTGRES_HOST` to an address the container can reach (on Unraid that is often the LAN IP of the Postgres container, e.g. `192.168.1.130`).
+The container listens on port `8080` in Docker Compose. Set `POSTGRES_HOST` to an address the container can reach (on Unraid that is often the LAN IP of the Postgres container, e.g. `192.168.1.80`).

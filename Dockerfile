@@ -11,6 +11,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY script/ script/
 COPY web/ web/
 
-EXPOSE 5001
+EXPOSE 8080
 
 CMD ["python", "-m", "web"]

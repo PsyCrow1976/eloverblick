@@ -57,18 +57,18 @@ Set:
 
 ```bash
 ELOVERBLIK_TOKEN=your-refresh-token
-POSTGRES_HOST=192.168.1.130
+POSTGRES_HOST=192.168.1.80
 POSTGRES_PORT=5432
 POSTGRES_USER=home
 POSTGRES_PASSWORD=your-postgres-password
 POSTGRES_DB=home
 WEB_HOST=0.0.0.0
-WEB_PORT=5001
+WEB_PORT=8080
 ```
 
 `POSTGRES_HOST` must be an address **the container** can reach:
 
-- Use the LAN IP of the machine that runs Postgres (for example `192.168.1.130`).
+- Use the LAN IP of the machine that runs Postgres (for example `192.168.1.80`).
 - Do **not** use `127.0.0.1` or `localhost`. Inside the container that is the container itself, not Unraid and not Postgres.
 - If Postgres is another Unraid container, publish `5432` on the host (or put both on a shared custom network) and still use the Unraid LAN IP unless you attach this stack to the same Docker network and use the Postgres **container name**.
 
@@ -86,7 +86,7 @@ Postgres must accept connections from Docker. If the app logs `connection refuse
 
 If the plugin has no Indirect Path field, skip the UI stack and start it from the terminal (step 5b).
 
-Optional UI label: the compose file already sets `net.unraid.docker.webui` so Unraid can offer a WebUI link on port `5001`.
+Optional UI label: the compose file already sets `net.unraid.docker.webui` so Unraid can offer a WebUI link on port `8080`.
 
 ## 5. Start
 
@@ -96,7 +96,7 @@ On the Docker tab, for the `eloverblick` stack:
 
 1. **Compose Up** (first run builds the image; that can take a minute).
 2. Confirm the `eloverblick` container is running.
-3. Open `http://<unraid-ip>:5001` (or the container WebUI link).
+3. Open `http://<unraid-ip>:8080` (or the container WebUI link).
 
 If Up does not rebuild after a later `git pull`, use the terminal command below.
 
@@ -109,19 +109,19 @@ docker compose ps
 docker compose logs -f web
 ```
 
-The app listens on port **5001**. If that port is already used on Unraid, change the left-hand side in `docker-compose.yml`:
+The app listens on port **8080**. If that port is already used on Unraid, pick another `808x` host port on the left-hand side in `docker-compose.yml`:
 
 ```yaml
 ports:
-  - "5002:5001"
+  - "8081:8080"
 ```
 
-Then the UI is `http://<unraid-ip>:5002`. `WEB_PORT` stays `5001` (port inside the container).
+Then the UI is `http://<unraid-ip>:8081`. `WEB_PORT` stays `8080` (port inside the container).
 
 ## 6. Check it
 
-- `http://<unraid-ip>:5001` shows ElOverblik and the selected address.
-- `http://<unraid-ip>:5001/health` returns `ok`.
+- `http://<unraid-ip>:8080` shows ElOverblik and the selected address.
+- `http://<unraid-ip>:8080/health` returns `ok`.
 - On first start the app creates schema `eloverblick` and the hours/days/months/years tables in `POSTGRES_DB`.
 - Open a date and use **Get data**. If that day is already stored, confirm before pulling again.
 
@@ -151,7 +151,7 @@ That stops the web container only. It does not delete Postgres or the usage tabl
 | Build fails, missing Dockerfile | Indirect path is not the cloned repo, or files were not copied next to `docker-compose.yml`. |
 | Container starts then dies | `docker compose logs web`. Missing `ELOVERBLIK_TOKEN` or Postgres settings in `.env`. |
 | Cannot connect to Postgres | `POSTGRES_HOST` is `localhost`; Postgres not listening on the LAN IP; port `5432` not published; `pg_hba.conf` rejects the Docker/Unraid IP. |
-| Port already allocated | Change the host port mapping (`"5002:5001"`). |
+| Port already allocated | Change the host port mapping (`"8081:8080"`). |
 | Empty usage / API errors | Token, DataHub delay for yesterday, or no address selected (the app uses the single active address). |
 | Compose Up does nothing after git pull | Rebuild: `docker compose up -d --build`. |
 
