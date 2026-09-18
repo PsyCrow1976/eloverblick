@@ -43,7 +43,15 @@ from starlette.responses import RedirectResponse, PlainTextResponse
 
 from script.exceptions import ElOverblikError
 from web import db
-from web.ingest import meter_id, pull_day, pull_month, pull_year
+from web.ingest import (
+    meter_id,
+    pull_day,
+    pull_month,
+    pull_year,
+    recent_completed_days,
+    usage_day_is_complete,
+    usage_lookback_days,
+)
 from web.jobs import JOB_NAME, instance_name, interval_hours, log_path, scheduler
 from web.prices import price_area
 
@@ -175,7 +183,7 @@ def jobs_view(msg: str | None = None, err: str | None = None):
         _crumbs([("Jobs", None)]),
         _flash(msg, err),
         Article(
-            H2("Price job"),
+            H2("Scheduled job"),
             P(
                 Strong(status.capitalize(), cls="badge " + ("ok" if running else "fail")),
                 Span(
@@ -191,6 +199,7 @@ def jobs_view(msg: str | None = None, err: str | None = None):
                 f"Stored hourly prices: today {counts.get(today, 0)} hours, "
                 f"tomorrow {counts.get(tomorrow, 0)} hours."
             ),
+            P(_usage_lookback_summary()),
             P(f"Log file: {log_path()}", cls="muted"),
             Div(*controls, cls="actions"),
             **({"cls": "warn"} if not running else {}),
@@ -543,6 +552,21 @@ def day_fetch(year: int, month: int, day: int, confirm: str | None = None):
         lambda: pull_day(chosen, replace=confirm == "1"),
         _day_href(chosen),
     )
+
+
+def _usage_lookback_summary() -> str:
+    days = recent_completed_days()
+    lookback = usage_lookback_days()
+    meter = meter_id()
+    if not meter:
+        return f"Usage lookback {lookback} days: no metering point yet."
+    bits = []
+    for day in days:
+        if usage_day_is_complete(meter, day):
+            bits.append(f"{day.isoformat()} stored")
+        else:
+            bits.append(f"{day.isoformat()} missing")
+    return f"Usage lookback {lookback} days: " + ", ".join(bits) + "."
 
 
 def _run_pull(action, fallback: str):

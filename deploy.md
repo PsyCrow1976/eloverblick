@@ -66,6 +66,7 @@ WEB_HOST=0.0.0.0
 WEB_PORT=8080
 PRICE_AREA=DK2
 JOB_INTERVAL_HOURS=6
+USAGE_LOOKBACK_DAYS=3
 JOB_LOG_PATH=/var/log/eloverblik/prices.log
 ```
 
@@ -126,7 +127,7 @@ Then the UI is `http://<unraid-ip>:8081`. Do not hardcode the port in `docker-co
 - `http://<unraid-ip>:<WEB_PORT>/health` returns `ok`.
 - On first start the app creates schema `eloverblick` and the hours/days/months/years, hour_prices, job_logs, and job_state tables in `POSTGRES_DB`.
 - Open a date and use **Get data**. If that day is already stored, confirm before pulling again.
-- **Jobs** (`/jobs`) shows the 6-hour price pull. It starts with the container. Host log file: `logs/prices.log` next to the compose file (mapped to `/var/log/eloverblik` in the container).
+- **Jobs** (`/jobs`) shows the 6-hour job (prices for today/tomorrow, and usage for the last 2–3 missing days). It starts with the container. Host log file: `logs/prices.log` next to the compose file (mapped to `/var/log/eloverblik` in the container).
 
 ## Update
 

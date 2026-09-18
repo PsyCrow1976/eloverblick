@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from script import CustomerApi
@@ -12,6 +13,8 @@ from script.models import TimeSeriesPoint, as_date_str
 from web import db
 
 TIMEZONE = ZoneInfo("Europe/Copenhagen")
+DEFAULT_LOOKBACK_DAYS = 3
+MIN_COMPLETE_HOURS = 23
 
 _api: CustomerApi | None = None
 
@@ -44,6 +47,76 @@ def meter_id() -> str | None:
         return customer_api().selected_address.metering_point_id
     except ElOverblikError:
         return None
+
+
+def usage_lookback_days() -> int:
+    raw = os.environ.get("USAGE_LOOKBACK_DAYS", str(DEFAULT_LOOKBACK_DAYS))
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_LOOKBACK_DAYS
+    return max(1, min(value, 14))
+
+
+def recent_completed_days(count: int | None = None) -> list[date]:
+    """Yesterday back through ``count`` completed local days."""
+    today = datetime.now(TIMEZONE).date()
+    n = count if count is not None else usage_lookback_days()
+    return [today - timedelta(days=offset) for offset in range(1, n + 1)]
+
+
+def usage_day_is_complete(metering_point_id: str, day: date) -> bool:
+    row = db.get_day(metering_point_id, day)
+    return row is not None and row.hour_count >= MIN_COMPLETE_HOURS
+
+
+def backfill_recent_usage() -> str:
+    """Pull hourly usage for recent days that are not stored yet.
+
+    DataHub is typically 2–3 days behind. Days that already have a full
+    set of hours are skipped. Empty API responses are treated as not
+    settled yet, not as a hard failure.
+    """
+    api = customer_api()
+    if api.selected_address is None:
+        raise ApiError("No metering point is selected for usage backfill.")
+    meter = api.selected_address.metering_point_id
+    days = recent_completed_days()
+    stored: list[str] = []
+    skipped: list[str] = []
+    pending: list[str] = []
+    failed: list[str] = []
+    for day in days:
+        label = as_date_str(day)
+        if usage_day_is_complete(meter, day):
+            skipped.append(label)
+            continue
+        try:
+            result = pull_day(day, replace=True)
+        except ElOverblikError as exc:
+            pending.append(f"{label} ({exc})")
+            continue
+        except Exception as exc:
+            failed.append(f"{label} {type(exc).__name__}: {exc}")
+            continue
+        stored.append(f"{label} ({result.message})")
+    parts = [
+        f"Usage lookback {len(days)} days: "
+        f"{len(stored)} stored, {len(skipped)} already present, "
+        f"{len(pending)} not in DataHub yet"
+    ]
+    if failed:
+        parts[0] += f", {len(failed)} errors"
+    if stored:
+        parts.append("stored " + "; ".join(stored))
+    if skipped:
+        parts.append("present " + ", ".join(skipped))
+    if pending:
+        parts.append("pending " + "; ".join(pending))
+    if failed:
+        parts.append("errors " + "; ".join(failed))
+        raise RuntimeError(". ".join(parts))
+    return ". ".join(parts)
 
 
 def pull_day(day: date, *, replace: bool = False) -> PullResult:

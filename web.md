@@ -41,12 +41,18 @@ Optional:
 
 - `PRICE_AREA` — bidding zone, default `DK2` (east Denmark / Copenhagen). Use `DK1` for west Denmark.
 - `JOB_INTERVAL_HOURS` — default `6`
-- `JOB_LOG_PATH` — default `/var/log/eloverblik/prices.log` in Docker; locally falls back to `logs/prices.log` if that path is not writable
+- `USAGE_LOOKBACK_DAYS` — completed days behind today to backfill, default `3`
+- `JOB_LOG_PATH` — default `/var/log/eloverblick/prices.log` in Docker; locally falls back to `logs/prices.log` if that path is not writable
 - `JOB_INSTANCE` — name written on each log row; defaults to the container hostname
 
-## Price job
+## Scheduled job
 
-On container start the app starts a background job (not system cron). Every 6 hours it pulls day-ahead prices for **today and tomorrow** from [Energi Data Service DayAheadPrices](https://www.energidataservice.dk/tso-electricity/DayAheadPrices), averages 15-minute values to hours, and upserts `eloverblick.hour_prices`.
+On container start the app starts a background job (not system cron). Every 6 hours it:
+
+1. Pulls day-ahead prices for **today and tomorrow** from [Energi Data Service DayAheadPrices](https://www.energidataservice.dk/tso-electricity/DayAheadPrices), averages 15-minute values to hours, and upserts `eloverblick.hour_prices`.
+2. Checks the last `USAGE_LOOKBACK_DAYS` **completed** days (yesterday back). Days that already have at least 23 hourly usage rows are skipped. Missing or incomplete days are queried from ElOverblik and stored if DataHub has them.
+
+Usage is typically 2–3 days behind. If a day is not settled yet, the run logs that it is pending and tries again next time. That is not treated as a job failure.
 
 Each run writes:
 

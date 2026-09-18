@@ -11,6 +11,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from web import db
+from web.ingest import backfill_recent_usage
 from web.prices import pull_today_and_tomorrow
 
 TIMEZONE = ZoneInfo("Europe/Copenhagen")
@@ -91,15 +92,29 @@ class PriceJob:
         if not self._run_lock.acquire(blocking=False):
             return "Price job is already running a pull."
         try:
+            parts: list[str] = []
+            ok = True
+            fail_detail = ""
             try:
-                message = pull_today_and_tomorrow()
-                self._record(True, f"trigger={trigger} {message}")
-                return message
+                parts.append(pull_today_and_tomorrow())
             except Exception as exc:
-                detail = f"trigger={trigger} {type(exc).__name__}: {exc}"
-                tb = traceback.format_exc()
-                self._record(False, f"{detail}\n{tb}")
-                raise
+                ok = False
+                fail_detail = traceback.format_exc()
+                parts.append(f"prices {type(exc).__name__}: {exc}")
+            try:
+                parts.append(backfill_recent_usage())
+            except Exception as exc:
+                ok = False
+                fail_detail = (fail_detail + "\n" + traceback.format_exc()).strip()
+                parts.append(f"usage {type(exc).__name__}: {exc}")
+            message = " ".join(parts)
+            output = f"trigger={trigger} {message}"
+            if fail_detail:
+                output = f"{output}\n{fail_detail}"
+            self._record(ok, output)
+            if not ok:
+                raise RuntimeError(message)
+            return message
         finally:
             self._run_lock.release()
 
