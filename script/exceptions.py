@@ -17,3 +17,7 @@ class ApiError(ElOverblikError):
         self.status_code = status_code
         self.error_code = error_code
         self.body = body
+
+
+class AddressSelectionError(ElOverblikError):
+    """Raised when an address cannot be chosen uniquely or does not match."""

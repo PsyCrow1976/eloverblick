@@ -9,7 +9,7 @@ import urllib.request
 from datetime import date, datetime
 from typing import Any
 
-from script.exceptions import ApiError
+from script.exceptions import AddressSelectionError, ApiError
 from script.models import Aggregation, MeteringPoint, TimeSeries, as_date_str
 from script.settings import Settings
 
@@ -27,6 +27,7 @@ class CustomerApi:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._access_token: str | None = None
+        self._selected_address: MeteringPoint | None = None
 
     @classmethod
     def from_env(cls) -> CustomerApi:
@@ -55,19 +56,57 @@ class CustomerApi:
         rows = _result_list(payload)
         return [MeteringPoint.from_api(row) for row in rows if isinstance(row, dict)]
 
+    def addresses(self, include_all: bool = False) -> list[MeteringPoint]:
+        """Return every address on this API key, with consumer name and status.
+
+        Status is ``active`` or ``moved_out`` (see MeteringPoint.status).
+        """
+        return self.metering_points(include_all=include_all)
+
+    @property
+    def selected_address(self) -> MeteringPoint | None:
+        """Address used for usage calls until another one is selected."""
+        return self._selected_address
+
+    def select_address(
+        self,
+        address: str | MeteringPoint | None = None,
+        *,
+        include_all: bool = False,
+    ) -> MeteringPoint:
+        """Choose the address used from here on for usage requests.
+
+        With no argument, the single active (not moved-out) address is selected.
+        Pass a metering point id, street name, consumer name, or MeteringPoint
+        to pick an alternative — including a moved-out address.
+        """
+        points = self.addresses(include_all=include_all)
+        if not points:
+            raise AddressSelectionError("No addresses are attached to this API key.")
+
+        if address is None:
+            chosen = _unique_active_address(points)
+        elif isinstance(address, MeteringPoint):
+            chosen = _match_address(points, address.metering_point_id)
+        else:
+            chosen = _match_address(points, str(address))
+
+        self._selected_address = chosen
+        return chosen
+
     def time_series(
         self,
-        metering_point_ids: list[str] | str,
         date_from: date | datetime | str,
         date_to: date | datetime | str,
         aggregation: Aggregation | str,
+        metering_point_ids: list[str] | str | None = None,
     ) -> list[TimeSeries]:
-        """Fetch time series for one or more metering points.
+        """Fetch time series for the selected address, or explicit meter ids.
 
         date_from is inclusive and date_to is exclusive (YYYY-MM-DD).
         At most 10 metering point IDs may be requested at once.
         """
-        ids = _normalize_ids(metering_point_ids)
+        ids = _normalize_ids(metering_point_ids or self._selected_meter_id())
         agg = Aggregation(aggregation)
         path = (
             f"/meterdata/gettimeseries/"
@@ -83,35 +122,43 @@ class CustomerApi:
 
     def hourly(
         self,
-        metering_point_ids: list[str] | str,
         date_from: date | datetime | str,
         date_to: date | datetime | str,
+        metering_point_ids: list[str] | str | None = None,
     ) -> list[TimeSeries]:
-        return self.time_series(metering_point_ids, date_from, date_to, Aggregation.HOUR)
+        return self.time_series(date_from, date_to, Aggregation.HOUR, metering_point_ids)
 
     def daily(
         self,
-        metering_point_ids: list[str] | str,
         date_from: date | datetime | str,
         date_to: date | datetime | str,
+        metering_point_ids: list[str] | str | None = None,
     ) -> list[TimeSeries]:
-        return self.time_series(metering_point_ids, date_from, date_to, Aggregation.DAY)
+        return self.time_series(date_from, date_to, Aggregation.DAY, metering_point_ids)
 
     def monthly(
         self,
-        metering_point_ids: list[str] | str,
         date_from: date | datetime | str,
         date_to: date | datetime | str,
+        metering_point_ids: list[str] | str | None = None,
     ) -> list[TimeSeries]:
-        return self.time_series(metering_point_ids, date_from, date_to, Aggregation.MONTH)
+        return self.time_series(date_from, date_to, Aggregation.MONTH, metering_point_ids)
 
     def yearly(
         self,
-        metering_point_ids: list[str] | str,
         date_from: date | datetime | str,
         date_to: date | datetime | str,
+        metering_point_ids: list[str] | str | None = None,
     ) -> list[TimeSeries]:
-        return self.time_series(metering_point_ids, date_from, date_to, Aggregation.YEAR)
+        return self.time_series(date_from, date_to, Aggregation.YEAR, metering_point_ids)
+
+    def _selected_meter_id(self) -> str:
+        if self._selected_address is None:
+            raise AddressSelectionError(
+                "No address is selected. Call select_address() first, "
+                "or pass metering_point_ids."
+            )
+        return self._selected_address.metering_point_id
 
     def _fetch_access_token(self) -> str:
         payload = self._request(
@@ -205,3 +252,48 @@ def _normalize_ids(metering_point_ids: list[str] | str) -> list[str]:
             "may be requested at once."
         )
     return ids
+
+
+def _unique_active_address(points: list[MeteringPoint]) -> MeteringPoint:
+    active = [point for point in points if point.is_active]
+    if len(active) == 1:
+        return active[0]
+    if not active:
+        listing = _format_address_list(points)
+        raise AddressSelectionError(
+            "No active address is attached to this API key. "
+            "Pass an alternative to select_address(). "
+            f"Available addresses:\n{listing}"
+        )
+    listing = _format_address_list(active)
+    raise AddressSelectionError(
+        "More than one active address is attached to this API key. "
+        "Pass the id, street, or name to select_address(). "
+        f"Active addresses:\n{listing}"
+    )
+
+
+def _match_address(points: list[MeteringPoint], query: str) -> MeteringPoint:
+    matches = [point for point in points if point.matches(query)]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        listing = _format_address_list(points)
+        raise AddressSelectionError(
+            f"No address matched {query!r}. Available addresses:\n{listing}"
+        )
+    listing = _format_address_list(matches)
+    raise AddressSelectionError(
+        f"Address query {query!r} matched more than one address:\n{listing}"
+    )
+
+
+def _format_address_list(points: list[MeteringPoint]) -> str:
+    lines = []
+    for point in points:
+        name = point.name or "(no name)"
+        lines.append(
+            f"  {point.metering_point_id}  {name}  "
+            f"{point.address}  [{point.status}]"
+        )
+    return "\n".join(lines)

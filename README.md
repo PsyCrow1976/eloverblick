@@ -7,8 +7,9 @@ ElOverblik is Energinet’s portal for Danish electricity customers. The Custome
 ## What it does
 
 - Authenticates as a private customer using a refresh token from [eloverblik.dk](https://eloverblik.dk)
-- Lists metering points linked to that customer
-- Pulls time series for those points with aggregation `Year`, `Month`, `Day`, or `Hour`
+- Lists addresses on the API key (consumer name, active or moved out)
+- Selects the active address, or an alternative, for later usage calls
+- Pulls time series for that address with aggregation `Year`, `Month`, `Day`, or `Hour`
 
 Official API docs: [Customer API](https://docs.eloverblik.dk/en/docs/api/customer)
 

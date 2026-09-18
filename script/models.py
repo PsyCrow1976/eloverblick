@@ -21,15 +21,17 @@ class Aggregation(str, Enum):
 
 @dataclass
 class MeteringPoint:
-    """One electricity metering point linked to the customer."""
+    """One electricity address / metering point linked to the API key."""
 
     metering_point_id: str
+    name: str | None = None
     type_of_mp: str | None = None
     street_name: str | None = None
     building_number: str | None = None
     postcode: str | None = None
     city_name: str | None = None
     has_relation: bool = False
+    is_moved_out: bool = False
     meter_number: str | None = None
     consumer_start_date: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
@@ -38,12 +40,14 @@ class MeteringPoint:
     def from_api(cls, data: dict[str, Any]) -> MeteringPoint:
         return cls(
             metering_point_id=data.get("meteringPointId") or "",
+            name=_consumer_name(data),
             type_of_mp=data.get("typeOfMP"),
             street_name=data.get("streetName"),
             building_number=data.get("buildingNumber"),
             postcode=data.get("postcode"),
             city_name=data.get("cityName"),
             has_relation=bool(data.get("hasRelation")),
+            is_moved_out=bool(data.get("isMovedOut")),
             meter_number=data.get("meterNumber"),
             consumer_start_date=data.get("consumerStartDate"),
             raw=data,
@@ -58,6 +62,27 @@ class MeteringPoint:
             self.city_name,
         ]
         return " ".join(part for part in parts if part)
+
+    @property
+    def is_active(self) -> bool:
+        return not self.is_moved_out
+
+    @property
+    def status(self) -> str:
+        return "moved_out" if self.is_moved_out else "active"
+
+    def matches(self, query: str) -> bool:
+        """True if query matches id, consumer name, or street address."""
+        needle = query.strip().casefold()
+        if not needle:
+            return False
+        haystacks = [
+            self.metering_point_id,
+            self.name or "",
+            self.address,
+            self.street_name or "",
+        ]
+        return any(needle in item.casefold() for item in haystacks if item)
 
 
 @dataclass
@@ -142,6 +167,14 @@ class TimeSeries:
 
     def total(self) -> float:
         return sum(point.quantity or 0.0 for point in self.points)
+
+
+def _consumer_name(data: dict[str, Any]) -> str | None:
+    first = (data.get("firstConsumerPartyName") or "").strip()
+    second = (data.get("secondConsumerPartyName") or "").strip()
+    if first and second:
+        return f"{first} / {second}"
+    return first or second or None
 
 
 def _market_evaluation_point_id(series: dict[str, Any]) -> str:

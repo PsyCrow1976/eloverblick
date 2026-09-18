@@ -1,4 +1,4 @@
-"""Smoke-check the client: load ELOVERBLIK_TOKEN, ping the API, list meters."""
+"""Smoke-check: load token, list addresses, select the active one."""
 
 from script.client import CustomerApi
 from script.settings import TOKEN_ENV_VAR
@@ -10,13 +10,19 @@ def main() -> None:
     print(f"api alive: {api.is_alive()}")
     token = api.access_token()
     print(f"access token: obtained ({len(token)} chars)")
-    points = api.metering_points()
-    print(f"metering points: {len(points)}")
-    for point in points:
+    listed = api.addresses()
+    print(f"addresses: {len(listed)}")
+    for point in listed:
+        name = point.name or "(no name)"
         print(
-            f"  {point.metering_point_id}  type={point.type_of_mp}  "
-            f"relation={point.has_relation}  {point.address}"
+            f"  {point.metering_point_id}  {name}  "
+            f"{point.address}  [{point.status}]"
         )
+    selected = api.select_address()
+    print(
+        f"selected: {selected.metering_point_id}  {selected.name}  "
+        f"{selected.address}  [{selected.status}]"
+    )
 
 
 if __name__ == "__main__":

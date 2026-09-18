@@ -9,7 +9,7 @@ Run commands from the repository root.
 | Path | Role |
 | --- | --- |
 | `script/settings.py` | `Settings` — reads `ELOVERBLIK_TOKEN` and the API base URL |
-| `script/exceptions.py` | `ElOverblikError`, `MissingTokenError`, `ApiError` |
+| `script/exceptions.py` | `ElOverblikError`, `MissingTokenError`, `ApiError`, `AddressSelectionError` |
 | `script/models.py` | `Aggregation`, `MeteringPoint`, `TimeSeries`, `TimeSeriesPoint` |
 | `script/client.py` | `CustomerApi` — HTTP client and public methods |
 | `script/__init__.py` | Public imports |
@@ -33,20 +33,23 @@ from script import CustomerApi, Aggregation
 
 api = CustomerApi.from_env()
 
-points = api.metering_points()
-meter_id = points[0].metering_point_id
+for place in api.addresses():
+    print(place.name, place.address, place.status)
+
+# Uses the single active address. Pass id/street/name for an alternative.
+selected = api.select_address()
+# selected = api.select_address("Frederikssundsvej")
 
 today = date.today()
 yesterday = today - timedelta(days=1)
 
-hourly = api.hourly(meter_id, yesterday, today)
-daily = api.daily(meter_id, yesterday, today)
-monthly = api.monthly(meter_id, date(today.year, 1, 1), today)
-yearly = api.yearly(meter_id, date(today.year, 1, 1), today)
+hourly = api.hourly(yesterday, today)
+daily = api.daily(yesterday, today)
+monthly = api.monthly(date(today.year, 1, 1), today)
+yearly = api.yearly(date(today.year, 1, 1), today)
 
-# Same as the helpers, with an explicit aggregation:
-series = api.time_series(meter_id, yesterday, today, Aggregation.HOUR)
-print(series[0].total(), series[0].unit)
+series = api.time_series(yesterday, today, Aggregation.HOUR)
+print(selected.address, series[0].total(), series[0].unit)
 ```
 
 Smoke check:
@@ -71,19 +74,33 @@ Main entry point. One instance per session.
 | `is_alive()` | `GET /isalive` |
 | `access_token()` | `GET /token` (cached on the instance) |
 | `metering_points(include_all=False)` | `GET /meteringpoints/meteringpoints` |
-| `time_series(ids, date_from, date_to, aggregation)` | `POST /meterdata/gettimeseries/{from}/{to}/{aggregation}` |
-| `hourly(...)` | aggregation `Hour` |
-| `daily(...)` | aggregation `Day` |
-| `monthly(...)` | aggregation `Month` |
-| `yearly(...)` | aggregation `Year` |
+| `addresses(include_all=False)` | Same list, meant for name + `active` / `moved_out` |
+| `select_address()` | Picks the single active address and stores it on the client |
+| `select_address("street or id")` | Picks an alternative address (including moved-out) |
+| `selected_address` | The address used by later usage calls |
+| `time_series(date_from, date_to, aggregation)` | `POST /meterdata/gettimeseries/{from}/{to}/{aggregation}` |
+| `hourly(date_from, date_to)` | aggregation `Hour` |
+| `daily(date_from, date_to)` | aggregation `Day` |
+| `monthly(date_from, date_to)` | aggregation `Month` |
+| `yearly(date_from, date_to)` | aggregation `Year` |
 
 The refresh token is exchanged once for a data-access token (valid about 24 hours). Later calls reuse that access token on the same `CustomerApi` instance.
 
 Date range is half-open: `date_from` inclusive, `date_to` exclusive, format `YYYY-MM-DD`. At most 10 metering point IDs per request.
 
+Usage methods use `selected_address` when `metering_point_ids` is omitted. Call `select_address()` first.
+
+`select_address()` with no argument requires exactly one active address. If none or several are active, pass the metering point id, street, or consumer name.
+
 ### `MeteringPoint`
 
-One installation: `metering_point_id`, address fields, `has_relation`, plus `raw` for the original JSON.
+One installation attached to the API key:
+
+- `name` — consumer party name(s)
+- `address` — street, number, postcode, city
+- `status` — `active` or `moved_out`
+- `is_active` / `is_moved_out`
+- `metering_point_id`, plus `raw` for the original JSON
 
 ### `TimeSeries` / `TimeSeriesPoint`
 
